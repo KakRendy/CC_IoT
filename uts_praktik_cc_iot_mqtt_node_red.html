@@ -1,0 +1,1641 @@
+<!DOCTYPE html>
+<html lang="id" class="scroll-smooth">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>UTS Praktik IoT — Interactive Exam Assessment Dashboard (MQTT & Node-RED)</title>
+  <script src="https://cdn.tailwindcss.com/3.4.17"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['JetBrains Mono', 'monospace'],
+          },
+          colors: {
+            brand: {
+              50: '#eef2ff',
+              100: '#e0e7ff',
+              200: '#c7d2fe',
+              500: '#6366f1',
+              600: '#4f46e5',
+              700: '#4338ca',
+              900: '#312e81',
+            }
+          }
+        }
+      }
+    };
+  </script>
+  <style>
+    body {
+      font-family: 'Inter', system-ui, sans-serif;
+      background-color: #f8fafc;
+      color: #0f172a;
+    }
+    .code-font {
+      font-family: 'JetBrains Mono', monospace;
+    }
+    /* Subtle SaaS Animations */
+    @keyframes fadeSlideUp {
+      from {
+        opacity: 0;
+        transform: translateY(12px);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+    .animate-enter {
+      animation: fadeSlideUp 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+    }
+    @keyframes pulseFlow {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(99, 102, 241, 0.35); }
+      50% { box-shadow: 0 0 0 8px rgba(99, 102, 241, 0); }
+    }
+    .pulse-node {
+      animation: pulseFlow 2.4s infinite;
+    }
+    /* Custom scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: #f1f5f9; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 9999px; }
+    ::-webkit-scrollbar-thumb:hover { background: #94a3b8; }
+
+    /* Custom Checkbox */
+    .rubric-checkbox:checked + .rubric-box {
+      background-color: #4f46e5;
+      border-color: #4f46e5;
+    }
+    .rubric-checkbox:checked + .rubric-box svg {
+      opacity: 1;
+      transform: scale(1);
+    }
+    .bonus-checkbox:checked + .rubric-box {
+      background-color: #d97706;
+      border-color: #d97706;
+    }
+    .bonus-checkbox:checked + .rubric-box svg {
+      opacity: 1;
+      transform: scale(1);
+    }
+    .nav-pill.active {
+      background-color: #eef2ff;
+      color: #4338ca;
+      font-weight: 600;
+    }
+    .nav-pill.active svg {
+      color: #4f46e5;
+    }
+    @media print {
+      aside, header button, .no-print { display: none !important; }
+      main { margin-left: 0 !important; padding: 0 !important; }
+    }
+  </style>
+</head>
+<body class="antialiased selection:bg-indigo-100 selection:text-indigo-900">
+
+  <!-- Toast Notification -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 hidden items-center gap-2.5 rounded-xl bg-slate-900 px-4 py-3 text-sm font-medium text-white shadow-xl transition-all duration-300 translate-y-4 opacity-0">
+    <svg class="h-4 w-4 text-emerald-400 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2.5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+    </svg>
+    <span id="toast-msg">Berhasil disalin ke clipboard</span>
+  </div>
+
+  <!-- Mobile Top Header -->
+  <div class="lg:hidden sticky top-0 z-40 flex items-center justify-between border-b border-slate-200 bg-white/90 px-4 py-3 backdrop-blur-md">
+    <div class="flex items-center gap-2.5">
+      <div class="flex h-8 w-8 items-center justify-center rounded-lg bg-indigo-600 text-white font-bold text-sm shadow-sm">
+        IoT
+      </div>
+      <div>
+        <div class="text-sm font-bold text-slate-900 leading-tight">UTS Praktik Assessment</div>
+        <div class="text-[11px] text-slate-500">MQTT &amp; Node-RED</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2">
+      <span id="mobile-score-pill" class="rounded-full bg-indigo-50 px-2.5 py-1 text-xs font-bold text-indigo-700 border border-indigo-200">
+        0 / 100
+      </span>
+      <button id="mobile-menu-btn" type="button" class="rounded-lg border border-slate-200 p-2 text-slate-600 hover:bg-slate-50" aria-label="Buka Menu">
+        <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+          <path stroke-linecap="round" stroke-linejoin="round" d="M4 6h16M4 12h16M4 18h16" />
+        </svg>
+      </button>
+    </div>
+  </div>
+
+  <!-- Mobile Drawer Overlay -->
+  <div id="mobile-overlay" class="fixed inset-0 z-40 hidden bg-slate-900/40 backdrop-blur-xs lg:hidden"></div>
+
+  <div class="flex min-h-screen">
+    <!-- Sidebar Navigation (Modern SaaS Style) -->
+    <aside id="sidebar" class="fixed inset-y-0 left-0 z-50 flex w-72 -translate-x-full flex-col border-r border-slate-200 bg-white transition-transform duration-300 lg:translate-x-0">
+      <!-- Brand -->
+      <div class="flex items-center justify-between border-b border-slate-100 px-5 py-4">
+        <div class="flex items-center gap-3">
+          <div class="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-indigo-600 to-blue-600 text-white shadow-sm">
+            <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+              <path stroke-linecap="round" stroke-linejoin="round" d="M9 3v2m6-2v2M9 19v2m6-2v2M5 9H3m2 6H3m18-6h-2m2 6h-2M7 19h10a2 2 0 002-2V7a2 2 0 00-2-2H7a2 2 0 00-2 2v10a2 2 0 002 2zM9 9h6v6H9V9z" />
+            </svg>
+          </div>
+          <div>
+            <h1 class="text-sm font-bold text-slate-900 tracking-tight">Exam Dashboard</h1>
+            <p class="text-[11px] font-medium text-slate-500">Komputasi Awan untuk IoT</p>
+          </div>
+        </div>
+        <button id="close-sidebar-btn" type="button" class="lg:hidden rounded-lg p-1.5 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+          <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" />
+          </svg>
+        </button>
+      </div>
+
+      <!-- Live Score Mini Widget in Sidebar -->
+      <div class="mx-4 mt-4 rounded-2xl border border-slate-200/80 bg-gradient-to-br from-slate-50 to-indigo-50/40 p-4">
+        <div class="flex items-center justify-between">
+          <span class="text-xs font-semibold uppercase tracking-wider text-slate-500">Estimasi Nilai</span>
+          <span id="sidebar-grade-badge" class="rounded-full bg-slate-200 px-2 py-0.5 text-[10px] font-bold text-slate-700">BELUM DINILAI</span>
+        </div>
+        <div class="mt-2 flex items-baseline gap-1.5">
+          <span id="sidebar-final-score" class="text-3xl font-extrabold tracking-tight text-slate-900">0</span>
+          <span class="text-xs font-medium text-slate-500">/ 100</span>
+        </div>
+        <div class="mt-2.5 h-2 w-full overflow-hidden rounded-full bg-slate-200">
+          <div id="sidebar-score-bar" class="h-full rounded-full bg-indigo-600 transition-all duration-500" style="width: 0%"></div>
+        </div>
+        <div class="mt-2 flex justify-between text-[11px] text-slate-500">
+          <span>Dasar: <strong id="sidebar-base-score" class="text-slate-700">0</strong>/100</span>
+          <span>Bonus: <strong id="sidebar-bonus-score" class="text-amber-600">+0</strong>/10</span>
+        </div>
+      </div>
+
+      <!-- Navigation Links -->
+      <nav class="flex-1 space-y-1 overflow-y-auto px-3 py-4">
+        <div class="px-3 pb-1.5 text-[11px] font-semibold uppercase tracking-wider text-slate-400">Workspace Ujian</div>
+        <button type="button" data-tab="overview" class="nav-pill active flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50">
+          <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M3 12l2-2m0 0l7-7 7 7M5 10v10a1 1 0 001 1h3m10-11l2 2m-2-2v10a1 1 0 01-1 1h-3m-6 0a1 1 0 001-1v-4a1 1 0 011-1h2a1 1 0 011 1v4a1 1 0 001 1m-6 0h6" />
+          </svg>
+          <span>1. Soal &amp; Ketentuan</span>
+        </button>
+        <button type="button" data-tab="lab" class="nav-pill flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50">
+          <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+            <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+          </svg>
+          <span>2. Lab MQTT &amp; Teknis</span>
+        </button>
+        <button type="button" data-tab="medium" class="nav-pill flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50">
+          <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z" />
+          </svg>
+          <span>3. Laporan Medium.com</span>
+        </button>
+        <button type="button" data-tab="assessment" class="nav-pill flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50">
+          <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z" />
+          </svg>
+          <span>4. Self-Assessment &amp; Nilai</span>
+        </button>
+        <button type="button" data-tab="references" class="nav-pill flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-slate-600 transition hover:bg-slate-50">
+          <svg class="h-4 w-4 shrink-0" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253" />
+          </svg>
+          <span>5. Referensi &amp; Skenario</span>
+        </button>
+      </nav>
+
+      <!-- Sidebar Footer Actions -->
+      <div class="border-t border-slate-100 p-4 space-y-2">
+        <button id="export-summary-btn" type="button" class="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-3 py-2.5 text-xs font-semibold text-white transition hover:bg-slate-800">
+          <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4" />
+          </svg>
+          Unduh Ringkasan Evaluasi (.md)
+        </button>
+        <p class="text-center text-[10px] text-slate-400">Progress tersimpan otomatis di browser</p>
+      </div>
+    </aside>
+
+    <!-- Main Content Area -->
+    <main class="flex-1 lg:ml-72">
+      <!-- Top SaaS Bar -->
+      <header class="sticky top-0 z-30 hidden lg:flex items-center justify-between border-b border-slate-200/80 bg-white/85 px-8 py-4 backdrop-blur-md">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-50 px-2.5 py-0.5 text-xs font-semibold text-emerald-700 border border-emerald-200">
+              <span class="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+              UTS Praktik Aktif
+            </span>
+            <span class="text-xs text-slate-400">•</span>
+            <span class="text-xs font-medium text-slate-500">Komputasi Awan untuk Internet of Things • Dosen: Rendy Almaheri Adhi Pratama, S.Kom., M.Kom.</span>
+          </div>
+          <h2 id="header-page-title" class="mt-0.5 text-lg font-bold text-slate-900">Sistem Monitoring Suhu &amp; Kelembapan</h2>
+        </div>
+
+        <div class="flex items-center gap-3">
+          <div class="flex items-center gap-2 rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs">
+            <span class="text-slate-500">Checklist:</span>
+            <span id="header-checklist-count" class="font-bold text-slate-900">0 / 40</span>
+          </div>
+          <button type="button" data-jump-tab="assessment" class="rounded-xl bg-indigo-600 px-4 py-2 text-xs font-semibold text-white shadow-xs transition hover:bg-indigo-700">
+            Cek Estimasi Nilai
+          </button>
+        </div>
+      </header>
+
+      <div class="mx-auto max-w-6xl px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+
+        <!-- ========================================================= -->
+        <!-- TAB 1: OVERVIEW (SOAL, KETENTUAN, FITUR WAJIB)            -->
+        <!-- ========================================================= -->
+        <section id="tab-overview" class="tab-panel space-y-6 animate-enter">
+          <!-- Hero Card -->
+          <div class="relative overflow-hidden rounded-2xl border border-indigo-200/70 bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 p-6 sm:p-8 text-white shadow-lg">
+            <div class="relative z-10 max-w-3xl">
+              <div class="inline-flex flex-wrap items-center gap-2 rounded-full bg-indigo-500/20 px-3 py-1 text-xs font-semibold text-indigo-200 border border-indigo-400/30">
+                <span>UTS Praktik Individu • Komputasi Awan untuk Internet of Things</span>
+              </div>
+              <p class="mt-2 text-xs font-medium text-indigo-200/90">Dosen Pengampu: Rendy Almaheri Adhi Pratama, S.Kom., M.Kom.</p>
+              <h2 class="mt-3 text-2xl sm:text-3xl font-extrabold tracking-tight leading-snug">
+                Sistem Monitoring Suhu dan Kelembapan Menggunakan MQTT Public Broker dan Node-RED
+              </h2>
+              <p class="mt-3 text-sm sm:text-base text-slate-300 leading-relaxed">
+                Buat sistem monitoring suhu dan kelembapan menggunakan <strong>Node-RED</strong> yang terhubung dengan <strong>MQTT Public Broker</strong> (EMQX Public atau HiveMQ Public). Sistem menerima dan mengolah data MQTT, menampilkan nilai dan grafik suhu serta kelembapan pada dashboard, memeriksa threshold berdasarkan standar kenyamanan termal/kesehatan lingkungan (seperti Kemenkes RI atau ASHRAE), dan memberikan notifikasi ketika nilai berada di luar batas. Dokumentasikan pengerjaan di <strong>Medium.com</strong> dengan screenshot.
+              </p>
+              <div class="mt-5 flex flex-wrap gap-2.5">
+                <button type="button" data-jump-tab="lab" class="inline-flex items-center gap-2 rounded-xl bg-indigo-500 px-4 py-2.5 text-xs font-semibold text-white shadow-sm transition hover:bg-indigo-400">
+                  Mulai Setup Broker &amp; Topic
+                  <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M13 7l5 5m0 0l-5 5m5-5H6" /></svg>
+                </button>
+                <button type="button" data-jump-tab="assessment" class="inline-flex items-center gap-2 rounded-xl bg-white/10 px-4 py-2.5 text-xs font-semibold text-white backdrop-blur-xs transition hover:bg-white/20">
+                  Buka Self-Assessment Rubrik
+                </button>
+              </div>
+            </div>
+            <!-- Decorative glow -->
+            <div class="pointer-events-none absolute -right-16 -top-16 h-64 w-64 rounded-full bg-indigo-500/20 blur-3xl"></div>
+          </div>
+
+          <!-- KPI Identity Grid -->
+          <div class="grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-6">
+            <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
+              <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Bentuk Ujian</div>
+              <div class="mt-1 text-sm font-bold text-slate-900">Praktik Individu</div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
+              <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Data</div>
+              <div class="mt-1 text-sm font-bold text-slate-900">Suhu &amp; Kelembapan</div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
+              <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Platform</div>
+              <div class="mt-1 text-sm font-bold text-indigo-600">Node-RED</div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
+              <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Broker</div>
+              <div class="mt-1 text-sm font-bold text-slate-900">EMQX / HiveMQ</div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
+              <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Media Laporan</div>
+              <div class="mt-1 text-sm font-bold text-slate-900">Medium.com</div>
+            </div>
+            <div class="rounded-2xl border border-slate-200 bg-white p-4 shadow-2xs">
+              <div class="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Pengumpulan</div>
+              <div class="mt-1 text-sm font-bold text-slate-900">Link ke Grup Kelas</div>
+            </div>
+          </div>
+
+          <!-- Scope & Rules Split -->
+          <div class="grid gap-6 lg:grid-cols-12">
+            <!-- Batasan Ruang Lingkup & Ketentuan -->
+            <div class="lg:col-span-7 space-y-6">
+              <div class="rounded-2xl border border-amber-200 bg-amber-50/70 p-5">
+                <div class="flex items-start gap-3">
+                  <div class="rounded-lg bg-amber-100 p-2 text-amber-700 shrink-0">
+                    <svg class="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                      <path stroke-linecap="round" stroke-linejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                  </div>
+                  <div>
+                    <h3 class="text-sm font-bold text-amber-950">Batasan Ruang Lingkup</h3>
+                    <p class="mt-1 text-xs sm:text-sm text-amber-900 leading-relaxed">
+                      <strong>Tidak diwajibkan</strong> merakit ESP32, memasang sensor fisik, mengatur pin, atau membuat rangkaian elektronik. Fokus penilaian adalah komunikasi MQTT, pengolahan data, dashboard, threshold, notifikasi, serta bukti implementasi.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+                <h3 class="text-base font-bold text-slate-900">10 Ketentuan Pengerjaan</h3>
+                <ol class="mt-4 space-y-2.5 text-sm text-slate-700">
+                  <li class="flex items-start gap-3"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-600">1</span><span>Ujian dikerjakan secara <strong>individu</strong>.</span></li>
+                  <li class="flex items-start gap-3"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-600">2</span><span>Gunakan platform <strong>Node-RED</strong>.</span></li>
+                  <li class="flex items-start gap-3"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-600">3</span><span>Pilih broker <strong>EMQX Public</strong> atau <strong>HiveMQ Public</strong>.</span></li>
+                  <li class="flex items-start gap-3"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-600">4</span><span>Gunakan data suhu dan kelembapan yang dikirim melalui MQTT.</span></li>
+                  <li class="flex items-start gap-3"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-600">5</span><span>Tidak diwajibkan menggunakan ESP32 atau sensor fisik (boleh simulator/Inject Node).</span></li>
+                  <li class="flex items-start gap-3"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-600">6</span><span>Setiap mahasiswa wajib menggunakan <strong>topic unik</strong> (<code class="code-font text-xs bg-slate-100 px-1.5 py-0.5 rounded">uts-iot/nama_mahasiswa/</code>).</span></li>
+                  <li class="flex items-start gap-3"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-600">7</span><span>Dashboard menampilkan data berdasarkan pesan MQTT yang diterima, bukan angka statis.</span></li>
+                  <li class="flex items-start gap-3"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-600">8</span><span>Buat logika batas bawah dan batas atas untuk suhu serta kelembapan.</span></li>
+                  <li class="flex items-start gap-3"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-600">9</span><span>Buat notifikasi ketika threshold terlampaui.</span></li>
+                  <li class="flex items-start gap-3"><span class="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-indigo-50 text-xs font-bold text-indigo-600">10</span><span>Dokumentasikan pengerjaan dan hasil pengujian di <strong>Medium.com</strong>.</span></li>
+                </ol>
+              </div>
+            </div>
+
+            <!-- 9 Fitur Wajib Output Praktik -->
+            <div class="lg:col-span-5">
+              <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs h-full">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-base font-bold text-slate-900">9 Fitur Wajib (Output Praktik)</h3>
+                  <span class="rounded-full bg-slate-100 px-2.5 py-0.5 text-xs font-semibold text-slate-600">Target Sistem</span>
+                </div>
+                <p class="mt-1 text-xs text-slate-500">Pastikan seluruh komponen output berikut ada pada flow dan dashboard Node-RED Anda:</p>
+                <div class="mt-4 space-y-2.5">
+                  <div class="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-3.5 py-2.5">
+                    <div><div class="text-xs font-bold text-slate-800">1. MQTT Connection</div><div class="text-[11px] text-slate-500">Terhubung ke broker publik</div></div>
+                    <span class="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">Wajib</span>
+                  </div>
+                  <div class="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-3.5 py-2.5">
+                    <div><div class="text-xs font-bold text-slate-800">2. MQTT Subscribe</div><div class="text-[11px] text-slate-500">Menerima data dari topic unik</div></div>
+                    <span class="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">Wajib</span>
+                  </div>
+                  <div class="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-3.5 py-2.5">
+                    <div><div class="text-xs font-bold text-slate-800">3. Data Processing</div><div class="text-[11px] text-slate-500">Mengolah payload suhu &amp; kelembapan</div></div>
+                    <span class="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">Wajib</span>
+                  </div>
+                  <div class="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-3.5 py-2.5">
+                    <div><div class="text-xs font-bold text-slate-800">4. Dashboard</div><div class="text-[11px] text-slate-500">Menampilkan nilai suhu &amp; kelembapan</div></div>
+                    <span class="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">Wajib</span>
+                  </div>
+                  <div class="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-3.5 py-2.5">
+                    <div><div class="text-xs font-bold text-slate-800">5. Gauge</div><div class="text-[11px] text-slate-500">Indikator suhu dan kelembapan</div></div>
+                    <span class="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">Wajib</span>
+                  </div>
+                  <div class="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-3.5 py-2.5">
+                    <div><div class="text-xs font-bold text-slate-800">6. Grafik</div><div class="text-[11px] text-slate-500">Perubahan suhu &amp; kelembapan terhadap waktu</div></div>
+                    <span class="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">Wajib</span>
+                  </div>
+                  <div class="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-3.5 py-2.5">
+                    <div><div class="text-xs font-bold text-slate-800">7. Threshold</div><div class="text-[11px] text-slate-500">Pemeriksaan batas bawah dan atas</div></div>
+                    <span class="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">Wajib</span>
+                  </div>
+                  <div class="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-3.5 py-2.5">
+                    <div><div class="text-xs font-bold text-slate-800">8. Status</div><div class="text-[11px] text-slate-500">Menampilkan NORMAL atau ABNORMAL</div></div>
+                    <span class="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">Wajib</span>
+                  </div>
+                  <div class="flex items-center justify-between rounded-xl border border-slate-100 bg-slate-50/70 px-3.5 py-2.5">
+                    <div><div class="text-xs font-bold text-slate-800">9. Notification</div><div class="text-[11px] text-slate-500">Notifikasi ketika threshold terlampaui</div></div>
+                    <span class="rounded-md bg-indigo-50 px-2 py-0.5 text-[10px] font-semibold text-indigo-700">Wajib</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- TAB 2: LAB MQTT, TOPIC GENERATOR, ARSITEKTUR & THRESHOLD  -->
+        <!-- ========================================================= -->
+        <section id="tab-lab" class="tab-panel hidden space-y-6 animate-enter">
+          <!-- Broker & Topic Generator -->
+          <div class="grid gap-6 lg:grid-cols-12">
+            <!-- Broker Config -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+              <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-slate-900">Konfigurasi MQTT Public Broker</h3>
+                <span class="rounded-full bg-emerald-50 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-700">Pilih Salah Satu</span>
+              </div>
+              <p class="mt-1 text-xs text-slate-500">Klik tombol salin untuk menyalin host atau port langsung ke konfigurasi MQTT Client Node-RED.</p>
+
+              <!-- Broker Selector Tabs -->
+              <div class="mt-4 grid grid-cols-2 gap-2 rounded-xl bg-slate-100 p-1">
+                <button type="button" data-broker="emqx" class="broker-btn rounded-lg bg-white py-2 text-xs font-bold text-indigo-700 shadow-2xs transition">
+                  EMQX Public
+                </button>
+                <button type="button" data-broker="hivemq" class="broker-btn rounded-lg py-2 text-xs font-semibold text-slate-600 transition hover:text-slate-900">
+                  HiveMQ Public
+                </button>
+              </div>
+
+              <div class="mt-4 space-y-2.5">
+                <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+                  <div>
+                    <div class="text-[11px] text-slate-500">Host</div>
+                    <div id="broker-host" class="code-font text-sm font-semibold text-slate-900">broker.emqx.io</div>
+                  </div>
+                  <button type="button" onclick="copyTextById('broker-host')" class="rounded-lg border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">Salin</button>
+                </div>
+                <div class="grid grid-cols-2 gap-2.5">
+                  <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+                    <div>
+                      <div class="text-[11px] text-slate-500">Port MQTT</div>
+                      <div id="broker-port" class="code-font text-sm font-semibold text-slate-900">1883</div>
+                    </div>
+                    <button type="button" onclick="copyTextById('broker-port')" class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">Salin</button>
+                  </div>
+                  <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2.5">
+                    <div>
+                      <div class="text-[11px] text-slate-500">Port TLS</div>
+                      <div id="broker-tls" class="code-font text-sm font-semibold text-slate-900">8883</div>
+                    </div>
+                    <button type="button" onclick="copyTextById('broker-tls')" class="rounded-lg border border-slate-200 bg-white px-2 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">Salin</button>
+                  </div>
+                </div>
+                <div class="grid grid-cols-2 gap-2.5 text-xs">
+                  <div class="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2">
+                    <span class="text-slate-500">Username:</span> <strong class="text-slate-800">Kosong / anonim</strong>
+                  </div>
+                  <div class="rounded-xl border border-slate-200 bg-slate-50 px-3.5 py-2">
+                    <span class="text-slate-500">Password:</span> <strong class="text-slate-800">Kosong / anonim</strong>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Topic Unik Generator -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+              <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-slate-900">Generator Topic Unik Wajib</h3>
+                <span class="rounded-full bg-rose-50 px-2.5 py-0.5 text-[11px] font-semibold text-rose-700">Wajib Unik</span>
+              </div>
+              <p class="mt-1 text-xs text-slate-500">Masukkan nama panggilan/identitas Anda untuk menghasilkan format topic yang konsisten antara publisher dan subscriber.</p>
+
+              <div class="mt-4">
+                <label for="student-slug-input" class="block text-xs font-semibold text-slate-700">Identitas Nama Mahasiswa</label>
+                <input id="student-slug-input" type="text" placeholder="contoh: andi_pratama" class="mt-1.5 w-full rounded-xl border border-slate-300 px-3.5 py-2 text-sm text-slate-900 focus:border-indigo-500 focus:outline-none focus:ring-2 focus:ring-indigo-500/20" />
+              </div>
+
+              <div class="mt-4 space-y-2.5">
+                <div class="flex items-center justify-between rounded-xl border border-indigo-200 bg-indigo-50/50 px-3.5 py-2.5">
+                  <div>
+                    <div class="text-[11px] font-medium text-indigo-700">Topic Utama (JSON Payload)</div>
+                    <div id="generated-topic-main" class="code-font text-sm font-bold text-indigo-950">uts-iot/nama_mahasiswa/</div>
+                  </div>
+                  <button type="button" onclick="copyTextById('generated-topic-main')" class="rounded-lg bg-indigo-600 px-2.5 py-1 text-xs font-semibold text-white hover:bg-indigo-700">Salin</button>
+                </div>
+                <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div class="truncate pr-2">
+                      <div class="text-[10px] text-slate-500">Subtopic Suhu (Opsional)</div>
+                      <div id="generated-topic-temp" class="code-font text-xs font-semibold text-slate-800 truncate">uts-iot/nama_mahasiswa/suhu</div>
+                    </div>
+                    <button type="button" onclick="copyTextById('generated-topic-temp')" class="shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100">Salin</button>
+                  </div>
+                  <div class="flex items-center justify-between rounded-xl border border-slate-200 bg-slate-50 px-3 py-2">
+                    <div class="truncate pr-2">
+                      <div class="text-[10px] text-slate-500">Subtopic Kelembapan</div>
+                      <div id="generated-topic-hum" class="code-font text-xs font-semibold text-slate-800 truncate">uts-iot/nama_mahasiswa/kelembapan</div>
+                    </div>
+                    <button type="button" onclick="copyTextById('generated-topic-hum')" class="shrink-0 rounded-md border border-slate-200 bg-white px-2 py-1 text-[11px] font-medium text-slate-700 hover:bg-slate-100">Salin</button>
+                  </div>
+                </div>
+              </div>
+              <p class="mt-3 text-[11px] text-slate-500">
+                Catatan: Jangan memasukkan data pribadi, kata sandi, atau informasi sensitif ke broker publik. Jika memakai simulator/Inject Node, sebutkan jelas bahwa data tersebut simulasi.
+              </p>
+            </div>
+          </div>
+
+          <!-- Interactive Architecture & Node-RED Flow -->
+          <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+            <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+              <div>
+                <h3 class="text-base font-bold text-slate-900">Arsitektur Sistem &amp; Rekomendasi Flow Node-RED</h3>
+                <p class="text-xs text-slate-500">Klik salah satu blok node di bawah untuk melihat peran teknis dan ketentuannya.</p>
+              </div>
+              <span class="inline-flex items-center gap-1.5 rounded-full bg-indigo-50 px-3 py-1 text-xs font-semibold text-indigo-700">Interaktif</span>
+            </div>
+
+            <!-- Visual Pipeline -->
+            <div class="mt-5 flex flex-wrap items-center justify-center gap-2 sm:gap-3 rounded-2xl border border-slate-100 bg-slate-50 p-4">
+              <button type="button" data-node="pub" class="flow-node rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-left shadow-2xs transition hover:border-indigo-400">
+                <div class="text-[10px] font-bold uppercase text-slate-400">Step 1</div>
+                <div class="text-xs font-bold text-slate-900">Publisher / Simulator</div>
+              </button>
+              <span class="text-slate-400 font-bold">→</span>
+              <button type="button" data-node="broker" class="flow-node pulse-node rounded-xl border border-indigo-300 bg-indigo-50 px-3.5 py-2.5 text-left shadow-2xs transition hover:border-indigo-500">
+                <div class="text-[10px] font-bold uppercase text-indigo-500">Step 2</div>
+                <div class="text-xs font-bold text-indigo-950">MQTT Public Broker</div>
+              </button>
+              <span class="text-slate-400 font-bold">→</span>
+              <button type="button" data-node="mqttin" class="flow-node rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-left shadow-2xs transition hover:border-indigo-400">
+                <div class="text-[10px] font-bold uppercase text-slate-400">Step 3</div>
+                <div class="text-xs font-bold text-slate-900">Node-RED MQTT In</div>
+              </button>
+              <span class="text-slate-400 font-bold">→</span>
+              <button type="button" data-node="parser" class="flow-node rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-left shadow-2xs transition hover:border-indigo-400">
+                <div class="text-[10px] font-bold uppercase text-slate-400">Step 4</div>
+                <div class="text-xs font-bold text-slate-900">JSON Parser &amp; Split</div>
+              </button>
+              <span class="text-slate-400 font-bold">→</span>
+              <button type="button" data-node="dash" class="flow-node rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-left shadow-2xs transition hover:border-indigo-400">
+                <div class="text-[10px] font-bold uppercase text-slate-400">Step 5A</div>
+                <div class="text-xs font-bold text-slate-900">Dashboard Gauge &amp; Chart</div>
+              </button>
+              <span class="text-slate-400 font-bold">+</span>
+              <button type="button" data-node="thresh" class="flow-node rounded-xl border border-slate-200 bg-white px-3.5 py-2.5 text-left shadow-2xs transition hover:border-indigo-400">
+                <div class="text-[10px] font-bold uppercase text-slate-400">Step 5B</div>
+                <div class="text-xs font-bold text-slate-900">Function Threshold → Switch → Notif</div>
+              </button>
+            </div>
+
+            <!-- Selected Node Detail -->
+            <div id="flow-node-detail" class="mt-4 rounded-xl border border-indigo-100 bg-indigo-50/40 p-4 text-xs sm:text-sm text-slate-700">
+              <strong class="text-indigo-950">MQTT Public Broker (EMQX / HiveMQ):</strong> Perantara komunikasi pesan antara publisher dan Node-RED. Broker bukan penyedia otomatis data suhu/kelembapan, sehingga harus ada publisher yang mengirim data ke topic unik Anda.
+            </div>
+          </div>
+
+          <!-- Threshold Simulator + Function Node Code -->
+          <div class="grid gap-6 lg:grid-cols-12">
+            <!-- Simulator -->
+            <div class="lg:col-span-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+              <div class="flex items-center justify-between">
+                <h3 class="text-base font-bold text-slate-900">Simulator Logika Threshold &amp; Notifikasi</h3>
+                <span class="rounded-full bg-slate-100 px-2.5 py-0.5 text-[11px] font-semibold text-slate-600">Acuan Permenkes RI No. 2/2023</span>
+              </div>
+              <p class="mt-1 text-xs text-slate-500">Geser nilai suhu dan kelembapan untuk menguji 6 kondisi status (NORMAL &amp; ABNORMAL) serta format pesan notifikasi.</p>
+
+              <div class="mt-5 space-y-5">
+                <div>
+                  <div class="flex justify-between text-xs font-semibold">
+                    <span class="text-slate-700">Suhu (Batas: 18 °C – 30 °C)</span>
+                    <span id="sim-temp-val" class="code-font font-bold text-indigo-600">28.5 °C</span>
+                  </div>
+                  <input id="sim-temp-slider" type="range" min="10" max="40" step="0.5" value="28.5" class="mt-2 w-full accent-indigo-600 cursor-pointer" />
+                  <div class="mt-1 flex justify-between text-[10px] text-slate-400">
+                    <span>10 °C (Rendah)</span><span>18 °C</span><span>30 °C</span><span>40 °C (Tinggi)</span>
+                  </div>
+                </div>
+
+                <div>
+                  <div class="flex justify-between text-xs font-semibold">
+                    <span class="text-slate-700">Kelembapan (Batas: 40 %RH – 60 %RH)</span>
+                    <span id="sim-hum-val" class="code-font font-bold text-indigo-600">65 %RH</span>
+                  </div>
+                  <input id="sim-hum-slider" type="range" min="20" max="90" step="1" value="65" class="mt-2 w-full accent-indigo-600 cursor-pointer" />
+                  <div class="mt-1 flex justify-between text-[10px] text-slate-400">
+                    <span>20 %RH (Rendah)</span><span>40 %RH</span><span>60 %RH</span><span>90 %RH (Tinggi)</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Live Status Output -->
+              <div class="mt-5 grid grid-cols-2 gap-3">
+                <div id="sim-temp-card" class="rounded-xl border p-3.5">
+                  <div class="text-[11px] font-semibold uppercase tracking-wider opacity-75">Status Suhu</div>
+                  <div id="sim-temp-status" class="mt-1 text-sm font-bold">Suhu normal</div>
+                </div>
+                <div id="sim-hum-card" class="rounded-xl border p-3.5">
+                  <div class="text-[11px] font-semibold uppercase tracking-wider opacity-75">Status Kelembapan</div>
+                  <div id="sim-hum-status" class="mt-1 text-sm font-bold">Kelembapan terlalu tinggi</div>
+                </div>
+              </div>
+
+              <!-- Notification Preview -->
+              <div class="mt-4 rounded-xl border border-slate-200 bg-slate-900 p-4 text-slate-100">
+                <div class="flex items-center justify-between text-[11px] text-slate-400">
+                  <span>Preview Output Notifikasi Node-RED</span>
+                  <span id="sim-overall-badge" class="rounded px-2 py-0.5 text-[10px] font-bold bg-rose-500/20 text-rose-300">ABNORMAL</span>
+                </div>
+                <pre id="sim-notif-preview" class="code-font mt-2 whitespace-pre-wrap text-xs leading-relaxed text-emerald-300"></pre>
+              </div>
+            </div>
+
+            <!-- Payload & Function Node Template -->
+            <div class="lg:col-span-6 space-y-6">
+              <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-base font-bold text-slate-900">Contoh Payload JSON</h3>
+                  <button type="button" onclick="copyTextById('json-payload-sample')" class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">Salin JSON</button>
+                </div>
+                <pre id="json-payload-sample" class="code-font mt-3 overflow-x-auto rounded-xl bg-slate-900 p-4 text-xs text-sky-300">{
+  "temperature": 28.5,
+  "humidity": 65,
+  "timestamp": "2026-11-16T10:00:00"
+}</pre>
+              </div>
+
+              <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+                <div class="flex items-center justify-between">
+                  <h3 class="text-base font-bold text-slate-900">Contoh Function Node: Threshold &amp; Validasi</h3>
+                  <button type="button" onclick="copyTextById('function-node-sample')" class="rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">Salin Kode</button>
+                </div>
+                <p class="mt-1 text-xs text-slate-500">Mencakup konversi numerik, validasi nilai kosong/tidak valid, batas bawah &amp; atas suhu serta kelembapan.</p>
+                <pre id="function-node-sample" class="code-font mt-3 max-h-60 overflow-auto rounded-xl bg-slate-900 p-4 text-xs text-emerald-300">const data = typeof msg.payload === 'string'
+  ? JSON.parse(msg.payload)
+  : msg.payload;
+
+const suhu = Number(data?.temperature);
+const hum = Number(data?.humidity);
+
+if (Number.isNaN(suhu) || Number.isNaN(hum)) {
+  node.warn("Payload tidak valid / kosong");
+  return null;
+}
+
+const statusSuhu = suhu &lt; 18 ? "Suhu terlalu rendah"
+  : suhu &gt; 30 ? "Suhu terlalu tinggi" : "Suhu normal";
+
+const statusHum = hum &lt; 40 ? "Kelembapan terlalu rendah"
+  : hum &gt; 60 ? "Kelembapan terlalu tinggi" : "Kelembapan normal";
+
+const isAbnormal = statusSuhu !== "Suhu normal" || statusHum !== "Kelembapan normal";
+
+msg.payload = {
+  temperature: suhu,
+  humidity: hum,
+  statusSuhu,
+  statusHum,
+  overallStatus: isAbnormal ? "ABNORMAL" : "NORMAL"
+};
+return msg;</pre>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- TAB 3: LAPORAN MEDIUM.COM & LINK PENGUMPULAN              -->
+        <!-- ========================================================= -->
+        <section id="tab-medium" class="tab-panel hidden space-y-6 animate-enter">
+          <div class="grid gap-6 lg:grid-cols-12">
+            <!-- Left: Student Identity + Medium Link Manager -->
+            <div class="lg:col-span-5 space-y-6">
+              <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+                <h3 class="text-base font-bold text-slate-900">Identitas &amp; Tautan Laporan Medium</h3>
+                <p class="mt-1 text-xs text-slate-500">Isi data Anda untuk mengisi template artikel Medium secara otomatis dan menyimpan link laporan Anda.</p>
+
+                <div class="mt-4 space-y-3">
+                  <div>
+                    <label for="med-nama" class="block text-xs font-semibold text-slate-700">Nama Mahasiswa</label>
+                    <input id="med-nama" type="text" placeholder="Nama lengkap Anda" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+                  </div>
+                  <div class="grid grid-cols-2 gap-3">
+                    <div>
+                      <label for="med-nim" class="block text-xs font-semibold text-slate-700">NPM (Nomor Pokok Mahasiswa)</label>
+                      <input id="med-nim" type="text" placeholder="Nomor Pokok Mahasiswa" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+                    </div>
+                    <div>
+                      <label for="med-kelas" class="block text-xs font-semibold text-slate-700">Jurusan</label>
+                      <input id="med-kelas" type="text" placeholder="Contoh: Teknik Informatika" class="mt-1 w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+                    </div>
+                  </div>
+                  <div>
+                    <label for="med-url" class="block text-xs font-semibold text-slate-700">Link Artikel Medium.com Anda</label>
+                    <div class="mt-1 flex gap-2">
+                      <input id="med-url" type="url" placeholder="https://medium.com/@username/judul-artikel" class="w-full rounded-xl border border-slate-300 px-3 py-2 text-sm focus:border-indigo-500 focus:outline-none" />
+                    </div>
+                    <div id="med-url-status" class="mt-1.5 text-[11px] text-slate-500">Masukkan URL artikel Medium yang sudah dipublikasikan.</div>
+                  </div>
+                  <button id="open-medium-btn" type="button" class="flex w-full items-center justify-center gap-2 rounded-xl bg-slate-900 px-4 py-2.5 text-xs font-semibold text-white transition hover:bg-slate-800 disabled:opacity-40">
+                    <span>Buka Laporan di Medium.com</span>
+                    <svg class="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                  </button>
+                </div>
+              </div>
+
+              <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+                <h3 class="text-sm font-bold text-slate-900">7 Ketentuan Pengumpulan Medium.com</h3>
+                <ul class="mt-3 space-y-2 text-xs text-slate-600">
+                  <li class="flex gap-2"><span class="text-indigo-600 font-bold">•</span><span>Laporan dibuat sebagai artikel di <strong>https://medium.com/</strong>.</span></li>
+                  <li class="flex gap-2"><span class="text-indigo-600 font-bold">•</span><span>Artikel harus dapat diakses dosen melalui link.</span></li>
+                  <li class="flex gap-2"><span class="text-indigo-600 font-bold">•</span><span>Screenshot harus merupakan bukti pengerjaan mahasiswa sendiri.</span></li>
+                  <li class="flex gap-2"><span class="text-indigo-600 font-bold">•</span><span>Kode Function Node harus terbaca jelas.</span></li>
+                  <li class="flex gap-2"><span class="text-indigo-600 font-bold">•</span><span>Cantumkan referensi threshold (Permenkes RI / ASHRAE / lainnya).</span></li>
+                  <li class="flex gap-2"><span class="text-indigo-600 font-bold">•</span><span>Kirimkan link artikel Medium ke grup kelas sesuai batas waktu.</span></li>
+                  <li class="flex gap-2"><span class="text-indigo-600 font-bold">•</span><span>Pastikan link dapat dibuka tanpa meminta izin akses khusus.</span></li>
+                </ul>
+              </div>
+            </div>
+
+            <!-- Right: Copyable Medium Template -->
+            <div class="lg:col-span-7">
+              <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+                <div class="flex flex-wrap items-center justify-between gap-2">
+                  <div>
+                    <h3 class="text-base font-bold text-slate-900">Template Artikel Medium.com</h3>
+                    <p class="text-xs text-slate-500">Ringkas dan berorientasi pada bukti implementasi (tidak perlu teori panjang MQTT/IoT).</p>
+                  </div>
+                  <button type="button" onclick="copyTextById('medium-template-code')" class="rounded-xl bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-indigo-700">
+                    Salin Template
+                  </button>
+                </div>
+                <pre id="medium-template-code" class="code-font mt-4 max-h-[540px] overflow-auto whitespace-pre-wrap rounded-xl border border-slate-200 bg-slate-50 p-4 text-xs leading-relaxed text-slate-800"></pre>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- TAB 4: SELF-ASSESSMENT RUBRIK & ESTIMASI NILAI            -->
+        <!-- ========================================================= -->
+        <section id="tab-assessment" class="tab-panel hidden space-y-6 animate-enter">
+          <!-- Top Score Dashboard -->
+          <div class="grid gap-6 lg:grid-cols-12">
+            <!-- Grade Summary Card -->
+            <div class="lg:col-span-5 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs flex flex-col justify-between">
+              <div>
+                <div class="flex items-center justify-between">
+                  <h3 class="text-base font-bold text-slate-900">Estimasi Nilai Akhir</h3>
+                  <span id="eval-status-badge" class="rounded-full bg-slate-100 px-3 py-1 text-xs font-bold text-slate-700">Mulai Checklist</span>
+                </div>
+                <p class="mt-1 text-xs text-slate-500">Rumus: <code class="code-font bg-slate-100 px-1.5 py-0.5 rounded text-slate-700">MIN(100, Nilai Dasar + Bonus)</code></p>
+
+                <div class="mt-6 flex items-center gap-6">
+                  <!-- Animated SVG Radial Gauge -->
+                  <div class="relative h-32 w-32 shrink-0">
+                    <svg class="h-full w-full -rotate-90" viewBox="0 0 120 120">
+                      <circle cx="60" cy="60" r="50" fill="none" stroke="#e2e8f0" stroke-width="10" />
+                      <circle id="radial-progress" cx="60" cy="60" r="50" fill="none" stroke="#4f46e5" stroke-width="10" stroke-linecap="round" stroke-dasharray="314.16" stroke-dashoffset="314.16" class="transition-all duration-500" />
+                    </svg>
+                    <div class="absolute inset-0 flex flex-col items-center justify-center">
+                      <span id="eval-final-score" class="text-3xl font-extrabold text-slate-900">0</span>
+                      <span class="text-[11px] font-medium text-slate-400">dari 100</span>
+                    </div>
+                  </div>
+
+                  <div class="flex-1 space-y-3">
+                    <div class="rounded-xl bg-slate-50 p-3 border border-slate-100">
+                      <div class="text-[11px] text-slate-500">Nilai Dasar (Maks 100)</div>
+                      <div class="text-lg font-bold text-slate-900"><span id="eval-base-score">0</span> <span class="text-xs font-normal text-slate-400">poin</span></div>
+                    </div>
+                    <div class="rounded-xl bg-amber-50/70 p-3 border border-amber-100">
+                      <div class="text-[11px] text-amber-800">Poin Bonus (Maks 10)</div>
+                      <div class="text-lg font-bold text-amber-700">+<span id="eval-bonus-score">0</span> <span class="text-xs font-normal text-amber-600">poin</span></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <div class="mt-6 flex flex-wrap gap-2 pt-4 border-t border-slate-100">
+                <button id="check-all-base-btn" type="button" class="flex-1 rounded-xl border border-indigo-200 bg-indigo-50 px-3 py-2 text-xs font-semibold text-indigo-700 hover:bg-indigo-100">
+                  Centang Semua Dasar
+                </button>
+                <button id="reset-rubric-btn" type="button" class="rounded-xl border border-slate-200 bg-white px-3 py-2 text-xs font-semibold text-slate-600 hover:bg-slate-50">
+                  Reset
+                </button>
+              </div>
+            </div>
+
+            <!-- Category Breakdown Chart -->
+            <div class="lg:col-span-7 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+              <div class="flex items-center justify-between">
+                <div>
+                  <h3 class="text-base font-bold text-slate-900">Capaian per Komponen Rubrik</h3>
+                  <p class="text-xs text-slate-500">Perbandingan poin terpenuhi terhadap bobot maksimal tiap bagian.</p>
+                </div>
+                <span id="eval-items-count" class="text-xs font-semibold text-slate-600">0 / 40 item</span>
+              </div>
+              <div class="relative mt-4 h-64">
+                <canvas id="rubricChart"></canvas>
+              </div>
+            </div>
+          </div>
+
+          <!-- Interactive Rubric Checklists Container -->
+          <div id="rubric-container" class="space-y-4"></div>
+        </section>
+
+        <!-- ========================================================= -->
+        <!-- TAB 5: REFERENSI & SKENARIO PENGUJIAN                     -->
+        <!-- ========================================================= -->
+        <section id="tab-references" class="tab-panel hidden space-y-6 animate-enter">
+          <div class="grid gap-6 lg:grid-cols-12">
+            <!-- 11 Skenario Pengujian -->
+            <div class="lg:col-span-7 rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+              <h3 class="text-base font-bold text-slate-900">11 Skenario Pengujian Sistem</h3>
+              <p class="mt-1 text-xs text-slate-500">Gunakan daftar skenario berikut untuk memastikan seluruh alur sistem berjalan sebelum publikasi laporan.</p>
+              <div class="mt-4 overflow-x-auto">
+                <table class="w-full text-left text-xs">
+                  <thead>
+                    <tr class="border-b border-slate-200 text-slate-500">
+                      <th class="py-2.5 pr-3 font-semibold">No.</th>
+                      <th class="py-2.5 pr-3 font-semibold">Skenario</th>
+                      <th class="py-2.5 font-semibold">Yang Diperiksa</th>
+                    </tr>
+                  </thead>
+                  <tbody class="divide-y divide-slate-100 text-slate-700">
+                    <tr><td class="py-2.5 pr-3 font-semibold">1</td><td class="py-2.5 pr-3 font-medium text-slate-900">Koneksi broker</td><td class="py-2.5">Status connected</td></tr>
+                    <tr><td class="py-2.5 pr-3 font-semibold">2</td><td class="py-2.5 pr-3 font-medium text-slate-900">Pengiriman pesan</td><td class="py-2.5">Pesan masuk ke topic unik</td></tr>
+                    <tr><td class="py-2.5 pr-3 font-semibold">3</td><td class="py-2.5 pr-3 font-medium text-slate-900">Subscribe</td><td class="py-2.5">Node-RED menerima pesan</td></tr>
+                    <tr><td class="py-2.5 pr-3 font-semibold">4</td><td class="py-2.5 pr-3 font-medium text-slate-900">Parsing</td><td class="py-2.5">Suhu dan kelembapan terbaca benar</td></tr>
+                    <tr><td class="py-2.5 pr-3 font-semibold">5</td><td class="py-2.5 pr-3 font-medium text-slate-900">Monitoring</td><td class="py-2.5">Gauge menampilkan nilai</td></tr>
+                    <tr><td class="py-2.5 pr-3 font-semibold">6</td><td class="py-2.5 pr-3 font-medium text-slate-900">Grafik</td><td class="py-2.5">Grafik menerima data baru</td></tr>
+                    <tr><td class="py-2.5 pr-3 font-semibold">7</td><td class="py-2.5 pr-3 font-medium text-slate-900">Kondisi normal</td><td class="py-2.5">Status NORMAL</td></tr>
+                    <tr><td class="py-2.5 pr-3 font-semibold">8</td><td class="py-2.5 pr-3 font-medium text-slate-900">Suhu tinggi</td><td class="py-2.5">Logika dan notifikasi suhu tinggi</td></tr>
+                    <tr><td class="py-2.5 pr-3 font-semibold">9</td><td class="py-2.5 pr-3 font-medium text-slate-900">Suhu rendah</td><td class="py-2.5">Kode wajib; demonstrasi bonus</td></tr>
+                    <tr><td class="py-2.5 pr-3 font-semibold">10</td><td class="py-2.5 pr-3 font-medium text-slate-900">Kelembapan tinggi</td><td class="py-2.5">Logika dan notifikasi kelembapan tinggi</td></tr>
+                    <tr><td class="py-2.5 pr-3 font-semibold">11</td><td class="py-2.5 pr-3 font-medium text-slate-900">Kelembapan rendah</td><td class="py-2.5">Kode wajib; demonstrasi bonus</td></tr>
+                  </tbody>
+                </table>
+              </div>
+            </div>
+
+            <!-- Academic & Technical References -->
+            <div class="lg:col-span-5 space-y-4">
+              <div class="rounded-2xl border border-slate-200 bg-white p-6 shadow-2xs">
+                <h3 class="text-base font-bold text-slate-900">Referensi Teknis &amp; Akademik</h3>
+                <p class="mt-1 text-xs text-slate-500">Tautan resmi standar kesehatan lingkungan, broker MQTT, dan dokumentasi Node-RED.</p>
+                <div class="mt-4 space-y-2.5 text-xs">
+                  <a href="https://peraturan.bpk.go.id/Details/245563/permenkes-no-2-tahun-2023" target="_blank" rel="noopener noreferrer" class="block rounded-xl border border-slate-200 p-3 transition hover:border-indigo-300 hover:bg-indigo-50/40">
+                    <div class="font-bold text-indigo-700">1. Permenkes RI Nomor 2 Tahun 2023 ↗</div>
+                    <div class="mt-0.5 text-slate-600">Kesehatan Lingkungan (Acuan Suhu 18–30 °C &amp; Kelembapan 40–60 %RH)</div>
+                  </a>
+                  <a href="https://www.ashrae.org/technical-resources/bookstore/standard-55-thermal-environmental-conditions-for-human-occupancy" target="_blank" rel="noopener noreferrer" class="block rounded-xl border border-slate-200 p-3 transition hover:border-indigo-300 hover:bg-indigo-50/40">
+                    <div class="font-bold text-indigo-700">2. ASHRAE Standard 55 ↗</div>
+                    <div class="mt-0.5 text-slate-600">Thermal Environmental Conditions for Human Occupancy</div>
+                  </a>
+                  <a href="https://mqtt.org/getting-started/" target="_blank" rel="noopener noreferrer" class="block rounded-xl border border-slate-200 p-3 transition hover:border-indigo-300 hover:bg-indigo-50/40">
+                    <div class="font-bold text-indigo-700">3. MQTT.org — Getting Started ↗</div>
+                    <div class="mt-0.5 text-slate-600">Dasar protokol publish-subscribe MQTT</div>
+                  </a>
+                  <a href="https://www.emqx.com/en/mqtt/public-mqtt5-broker" target="_blank" rel="noopener noreferrer" class="block rounded-xl border border-slate-200 p-3 transition hover:border-indigo-300 hover:bg-indigo-50/40">
+                    <div class="font-bold text-indigo-700">4. EMQ Technologies — Public MQTT Broker ↗</div>
+                    <div class="mt-0.5 text-slate-600">broker.emqx.io (Port 1883 / TLS 8883)</div>
+                  </a>
+                  <a href="https://www.hivemq.com/mqtt/public-mqtt-broker/" target="_blank" rel="noopener noreferrer" class="block rounded-xl border border-slate-200 p-3 transition hover:border-indigo-300 hover:bg-indigo-50/40">
+                    <div class="font-bold text-indigo-700">5. HiveMQ — Public MQTT Broker ↗</div>
+                    <div class="mt-0.5 text-slate-600">broker.hivemq.com (Port 1883 / TLS 8883)</div>
+                  </a>
+                  <a href="https://nodered.org/docs/user-guide/writing-functions" target="_blank" rel="noopener noreferrer" class="block rounded-xl border border-slate-200 p-3 transition hover:border-indigo-300 hover:bg-indigo-50/40">
+                    <div class="font-bold text-indigo-700">6. Node-RED — Writing Functions ↗</div>
+                    <div class="mt-0.5 text-slate-600">Panduan menulis kode pada Function Node</div>
+                  </a>
+                  <a href="https://nodered.org/docs/user-guide/messages" target="_blank" rel="noopener noreferrer" class="block rounded-xl border border-slate-200 p-3 transition hover:border-indigo-300 hover:bg-indigo-50/40">
+                    <div class="font-bold text-indigo-700">7. Node-RED — Working with Messages ↗</div>
+                    <div class="mt-0.5 text-slate-600">Struktur msg.payload dan pemrosesan pesan</div>
+                  </a>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+      </div>
+    </main>
+  </div>
+
+  <script>
+    // =========================================================================
+    // 1. DATA RUBRIK LENGKAP (SESUAI DOKUMEN BAGIAN 8)
+    // =========================================================================
+    const RUBRIC_SECTIONS = [
+      {
+        id: 'broker',
+        title: '8.1 Konfigurasi MQTT Broker',
+        maxPoints: 15,
+        isBonus: false,
+        evidence: 'Bukti: screenshot konfigurasi broker, MQTT In, status koneksi, dan topic.',
+        items: [
+          { id: 'b1', label: 'Memilih EMQX atau HiveMQ Public', pts: 2 },
+          { id: 'b2', label: 'Host dan port benar', pts: 3 },
+          { id: 'b3', label: 'MQTT Client Node-RED terkonfigurasi', pts: 3 },
+          { id: 'b4', label: 'Topic unik sesuai identitas', pts: 4 },
+          { id: 'b5', label: 'Berhasil terhubung ke broker', pts: 3 }
+        ]
+      },
+      {
+        id: 'data',
+        title: '8.2 Penerimaan dan Pengolahan Data',
+        maxPoints: 15,
+        isBonus: false,
+        evidence: 'Bukti: MQTT In, Debug Node, contoh payload, dan kode parser/Function Node.',
+        items: [
+          { id: 'd1', label: 'Berhasil subscribe topic', pts: 3 },
+          { id: 'd2', label: 'Berhasil menerima pesan MQTT', pts: 3 },
+          { id: 'd3', label: 'Mampu membaca payload', pts: 3 },
+          { id: 'd4', label: 'Mampu mengambil nilai suhu', pts: 2 },
+          { id: 'd5', label: 'Mampu mengambil nilai kelembapan', pts: 2 },
+          { id: 'd6', label: 'Memeriksa payload tidak valid', pts: 2 }
+        ]
+      },
+      {
+        id: 'dashboard',
+        title: '8.3 Dashboard Monitoring',
+        maxPoints: 20,
+        isBonus: false,
+        evidence: 'Bukti: screenshot dashboard, gauge, kedua grafik, dan perubahan nilai.',
+        items: [
+          { id: 'm1', label: 'Dashboard dapat diakses', pts: 3 },
+          { id: 'm2', label: 'Gauge suhu berfungsi', pts: 3 },
+          { id: 'm3', label: 'Gauge kelembapan berfungsi', pts: 3 },
+          { id: 'm4', label: 'Grafik suhu berfungsi', pts: 4 },
+          { id: 'm5', label: 'Grafik kelembapan berfungsi', pts: 4 },
+          { id: 'm6', label: 'Visualisasi diperbarui sesuai pesan masuk', pts: 3 }
+        ]
+      },
+      {
+        id: 'threshold',
+        title: '8.4 Logika Threshold',
+        maxPoints: 20,
+        isBonus: false,
+        evidence: 'Bukti: referensi, kode Function Node, flow threshold, dan penjelasan kondisi (kode batas bawah tetap wajib).',
+        items: [
+          { id: 't1', label: 'Menentukan referensi standar threshold', pts: 3 },
+          { id: 't2', label: 'Menentukan batas bawah dan atas suhu', pts: 2 },
+          { id: 't3', label: 'Menentukan batas bawah dan atas kelembapan', pts: 2 },
+          { id: 't4', label: 'Function Node pemeriksaan suhu', pts: 4 },
+          { id: 't5', label: 'Function Node pemeriksaan kelembapan', pts: 4 },
+          { id: 't6', label: 'Kondisi NORMAL dan ABNORMAL', pts: 3 },
+          { id: 't7', label: 'Menangani nilai kosong/tidak valid', pts: 2 }
+        ]
+      },
+      {
+        id: 'notif',
+        title: '8.5 Notifikasi',
+        maxPoints: 15,
+        isBonus: false,
+        evidence: 'Bukti: konfigurasi, kode/flow, dan screenshot notifikasi jika kondisi tersedia.',
+        items: [
+          { id: 'n1', label: 'Membuat mekanisme notifikasi', pts: 3 },
+          { id: 'n2', label: 'Notifikasi suhu di atas batas', pts: 3 },
+          { id: 'n3', label: 'Notifikasi suhu di bawah batas', pts: 2 },
+          { id: 'n4', label: 'Notifikasi kelembapan di atas batas', pts: 3 },
+          { id: 'n5', label: 'Notifikasi kelembapan di bawah batas', pts: 2 },
+          { id: 'n6', label: 'Pesan berisi parameter, nilai, dan kondisi', pts: 2 }
+        ]
+      },
+      {
+        id: 'medium',
+        title: '8.6 Pengujian dan Laporan Medium.com',
+        maxPoints: 15,
+        isBonus: false,
+        evidence: 'Bukti: link Medium, screenshot pengujian, tabel hasil, dan penjelasan singkat fitur.',
+        items: [
+          { id: 'r1', label: 'Pengujian koneksi dan penerimaan data', pts: 3 },
+          { id: 'r2', label: 'Pengujian dashboard dan grafik', pts: 3 },
+          { id: 'r3', label: 'Menjelaskan hasil pemeriksaan threshold', pts: 3 },
+          { id: 'r4', label: 'Menyertakan screenshot bukti', pts: 3 },
+          { id: 'r5', label: 'Laporan runtut dan link dapat diakses', pts: 3 }
+        ]
+      },
+      {
+        id: 'bonus',
+        title: '8.8 Kriteria Bonus (Maksimal +10 Poin)',
+        maxPoints: 10,
+        isBonus: true,
+        evidence: 'Pengujian bonus boleh menggunakan pesan uji terkontrol selain data publik untuk membuktikan kondisi melewati ambang batas bawah/atas, asalkan dibedakan jelas dari data aktual.',
+        items: [
+          { id: 'x1', label: 'Menghasilkan kondisi suhu melewati ambang batas bawah/atas (suhu rendah & suhu tinggi) melalui pengujian', pts: 3 },
+          { id: 'x2', label: 'Dashboard menunjukkan kondisi suhu rendah & suhu tinggi', pts: 2 },
+          { id: 'x3', label: 'Notifikasi suhu melewati ambang batas bawah/atas (suhu rendah & suhu tinggi) berhasil muncul', pts: 2 },
+          { id: 'x4', label: 'Menghasilkan kondisi kelembapan melewati ambang batas bawah/atas (kelembapan rendah & kelembapan tinggi)', pts: 1 },
+          { id: 'x5', label: 'Dashboard dan notifikasi kelembapan melewati ambang batas bawah/atas (kelembapan rendah & kelembapan tinggi) berhasil ditampilkan', pts: 2 }
+        ]
+      }
+    ];
+
+    const BROKER_CONFIG = {
+      emqx: { name: 'EMQX Public', host: 'broker.emqx.io', port: '1883', tls: '8883' },
+      hivemq: { name: 'HiveMQ Public', host: 'broker.hivemq.com', port: '1883', tls: '8883' }
+    };
+
+    const NODE_DETAILS = {
+      pub: '<strong>Sumber Data / Publisher / Simulator:</strong> Mengirimkan data suhu dan kelembapan ke broker menggunakan topic unik mahasiswa. Dapat berupa simulator atau Inject/Function Node di Node-RED (ESP32 tidak diwajibkan).',
+      broker: '<strong>MQTT Public Broker (EMQX / HiveMQ):</strong> Perantara komunikasi pesan antara publisher dan Node-RED. Broker bukan penyedia otomatis data suhu/kelembapan, sehingga harus ada publisher yang mengirim data ke topic unik Anda.',
+      mqttin: '<strong>Node-RED MQTT In:</strong> Berlangganan (subscribe) ke topic unik mahasiswa pada broker yang dipilih dan meneruskan pesan masuk ke alur pengolahan.',
+      parser: '<strong>JSON / Payload Parser &amp; Pemisahan Data:</strong> Membaca payload, mengambil nilai temperature dan humidity, mengonversi ke numerik, serta memvalidasi data kosong atau tidak valid.',
+      dash: '<strong>Dashboard (Gauge &amp; Chart):</strong> Menampilkan indikator gauge dan grafik perubahan suhu (°C) serta kelembapan (%RH) terhadap waktu secara dinamis sesuai pesan masuk.',
+      thresh: '<strong>Function Threshold → Switch → Notification:</strong> Memeriksa batas bawah dan batas atas suhu &amp; kelembapan, menentukan status NORMAL/ABNORMAL, dan memicu notifikasi saat threshold terlampaui.'
+    };
+
+    // =========================================================================
+    // 2. APPLICATION STATE & STORAGE
+    // =========================================================================
+    const STORAGE_KEY = 'uts_iot_assessment_state_v1';
+    let state = {
+      activeTab: 'overview',
+      broker: 'emqx',
+      slug: '',
+      nama: '',
+      nim: '',
+      kelas: '',
+      mediumUrl: '',
+      checked: {}
+    };
+
+    function loadState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          state = { ...state, ...parsed, checked: parsed.checked || {} };
+        }
+      } catch (e) { /* ignore storage errors */ }
+    }
+
+    function saveState() {
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (e) { /* ignore storage errors */ }
+    }
+
+    // =========================================================================
+    // 3. TOAST & COPY UTILITIES
+    // =========================================================================
+    let toastTimer = null;
+    function showToast(msg) {
+      const toast = document.getElementById('toast');
+      const toastMsg = document.getElementById('toast-msg');
+      toastMsg.textContent = msg;
+      toast.classList.remove('hidden');
+      toast.classList.add('flex');
+      requestAnimationFrame(() => {
+        toast.classList.remove('translate-y-4', 'opacity-0');
+      });
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.add('translate-y-4', 'opacity-0');
+        setTimeout(() => {
+          toast.classList.add('hidden');
+          toast.classList.remove('flex');
+        }, 300);
+      }, 2200);
+    }
+
+    function copyRawText(text, label) {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(text).then(() => {
+          showToast(label || 'Berhasil disalin ke clipboard');
+        }).catch(() => fallbackCopy(text, label));
+      } else {
+        fallbackCopy(text, label);
+      }
+    }
+
+    function fallbackCopy(text, label) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        showToast(label || 'Berhasil disalin ke clipboard');
+      } catch (e) {
+        showToast('Gagal menyalin teks');
+      }
+      document.body.removeChild(ta);
+    }
+
+    window.copyTextById = function(id) {
+      const el = document.getElementById(id);
+      if (el) copyRawText(el.textContent.trim(), 'Teks berhasil disalin');
+    };
+
+    // =========================================================================
+    // 4. NAVIGATION & TABS
+    // =========================================================================
+    const TAB_TITLES = {
+      overview: 'Soal & Ketentuan UTS Praktik',
+      lab: 'Lab Konfigurasi MQTT, Topic & Simulator Threshold',
+      medium: 'Laporan Medium.com & Link Pengumpulan',
+      assessment: 'Self-Assessment Rubrik & Estimasi Nilai',
+      references: 'Skenario Pengujian & Referensi Akademik'
+    };
+
+    function switchTab(tabId) {
+      state.activeTab = tabId;
+      saveState();
+
+      document.querySelectorAll('.tab-panel').forEach(p => p.classList.add('hidden'));
+      const target = document.getElementById(`tab-${tabId}`);
+      if (target) target.classList.remove('hidden');
+
+      document.querySelectorAll('.nav-pill').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.tab === tabId);
+      });
+
+      const titleEl = document.getElementById('header-page-title');
+      if (titleEl && TAB_TITLES[tabId]) titleEl.textContent = TAB_TITLES[tabId];
+
+      if (tabId === 'assessment' && rubricChart) {
+        rubricChart.resize();
+      }
+      closeMobileSidebar();
+    }
+
+    function openMobileSidebar() {
+      document.getElementById('sidebar').classList.remove('-translate-x-full');
+      document.getElementById('mobile-overlay').classList.remove('hidden');
+    }
+
+    function closeMobileSidebar() {
+      document.getElementById('sidebar').classList.add('-translate-x-full');
+      document.getElementById('mobile-overlay').classList.add('hidden');
+    }
+
+    // =========================================================================
+    // 5. BROKER, TOPIC GENERATOR & MEDIUM TEMPLATE
+    // =========================================================================
+    function updateBrokerUI() {
+      const cfg = BROKER_CONFIG[state.broker] || BROKER_CONFIG.emqx;
+      document.getElementById('broker-host').textContent = cfg.host;
+      document.getElementById('broker-port').textContent = cfg.port;
+      document.getElementById('broker-tls').textContent = cfg.tls;
+
+      document.querySelectorAll('.broker-btn').forEach(btn => {
+        const active = btn.dataset.broker === state.broker;
+        btn.className = active
+          ? 'broker-btn rounded-lg bg-white py-2 text-xs font-bold text-indigo-700 shadow-2xs transition'
+          : 'broker-btn rounded-lg py-2 text-xs font-semibold text-slate-600 transition hover:text-slate-900';
+      });
+      updateMediumTemplate();
+    }
+
+    function sanitizeSlug(val) {
+      const cleaned = val.trim().toLowerCase().replace(/[^a-z0-9_]+/g, '_').replace(/^_+|_+$/g, '');
+      return cleaned || 'nama_mahasiswa';
+    }
+
+    function updateTopicUI() {
+      const slug = sanitizeSlug(state.slug);
+      document.getElementById('generated-topic-main').textContent = `uts-iot/${slug}/`;
+      document.getElementById('generated-topic-temp').textContent = `uts-iot/${slug}/suhu`;
+      document.getElementById('generated-topic-hum').textContent = `uts-iot/${slug}/kelembapan`;
+      updateMediumTemplate();
+    }
+
+    function updateMediumTemplate() {
+      const cfg = BROKER_CONFIG[state.broker] || BROKER_CONFIG.emqx;
+      const slug = sanitizeSlug(state.slug);
+      const nama = state.nama.trim() || '[Nama Mahasiswa]';
+      const nim = state.nim.trim() || '[NPM]';
+      const kelas = state.kelas.trim() || '[Jurusan]';
+
+      const tpl = `# UTS Praktik: Monitoring Suhu dan Kelembapan Menggunakan MQTT dan Node-RED
+
+**Mata Kuliah:** Komputasi Awan untuk Internet of Things
+**Dosen Pengampu:** Rendy Almaheri Adhi Pratama, S.Kom., M.Kom.
+**Nama:** ${nama}
+**NPM:** ${nim}
+**Jurusan:** ${kelas}
+**MQTT Broker:** ${cfg.name} (${cfg.host}:${cfg.port})
+**MQTT Topic:** uts-iot/${slug}/
+
+### 1. Konfigurasi MQTT Broker
+- Broker yang digunakan: ${cfg.name}
+- Host dan port: ${cfg.host} (Port ${cfg.port})
+- Topic unik yang digunakan: uts-iot/${slug}/
+- [Lampirkan screenshot konfigurasi broker dan status koneksi]
+
+### 2. Penerimaan dan Pengolahan Data
+- Contoh payload suhu dan kelembapan yang diterima:
+\`\`\`json
+{
+  "temperature": 28.5,
+  "humidity": 65,
+  "timestamp": "2026-11-16T10:00:00"
+}
+\`\`\`
+- Penjelasan singkat proses subscribe dan pengolahan payload (sebutkan sumber data/simulasi secara jelas).
+- [Lampirkan screenshot MQTT In dan Debug Node]
+
+### 3. Dashboard Monitoring
+- [Lampirkan screenshot dashboard]
+- Tampilan nilai suhu (°C) dan kelembapan (%RH) pada gauge.
+- Grafik perubahan suhu dan kelembapan terhadap waktu.
+
+### 4. Threshold dan Notifikasi
+- Sumber referensi standar: Permenkes RI Nomor 2 Tahun 2023 (atau ASHRAE Standard 55 beserta penjelasan penyederhanaannya).
+- Batas bawah & atas Suhu: 18 °C – 30 °C
+- Batas bawah & atas Kelembapan: 40 %RH – 60 %RH
+- [Lampirkan screenshot kode Function Node & flow notifikasi]
+- Penjelasan singkat kondisi NORMAL dan ABNORMAL.
+
+### 5. Hasil Pengujian
+| No. | Pengujian | Hasil |
+| --- | --- | --- |
+| 1 | Koneksi MQTT Broker | Berhasil / Terhubung |
+| 2 | Penerimaan data MQTT | Berhasil |
+| 3 | Pembacaan suhu dan kelembapan | Sesuai payload |
+| 4 | Dashboard monitoring | Gauge tampil |
+| 5 | Grafik suhu dan kelembapan | Grafik bergerak |
+| 6 | Pemeriksaan threshold | Logika berjalan |
+| 7 | Notifikasi | Muncul saat melewati ambang batas bawah/atas (suhu rendah & tinggi, kelembapan rendah & tinggi) |
+
+### 6. Kesimpulan
+Tuliskan secara singkat hasil implementasi dan kendala yang ditemukan.`;
+
+      document.getElementById('medium-template-code').textContent = tpl;
+    }
+
+    function updateMediumUrlStatus() {
+      const url = state.mediumUrl.trim();
+      const statusEl = document.getElementById('med-url-status');
+      const openBtn = document.getElementById('open-medium-btn');
+      if (!url) {
+        statusEl.textContent = 'Masukkan URL artikel Medium yang sudah dipublikasikan.';
+        statusEl.className = 'mt-1.5 text-[11px] text-slate-500';
+        openBtn.disabled = true;
+        return;
+      }
+      const isValid = /^https:\/\/([a-z0-9-]+\.)?medium\.com\/.+/i.test(url);
+      if (isValid) {
+        statusEl.textContent = 'Link Medium valid dan siap dibuka atau dikirim ke grup kelas.';
+        statusEl.className = 'mt-1.5 text-[11px] font-medium text-emerald-600';
+        openBtn.disabled = false;
+      } else {
+        statusEl.textContent = 'Pastikan URL diawali https://medium.com/... dan dapat diakses tanpa izin khusus.';
+        statusEl.className = 'mt-1.5 text-[11px] font-medium text-amber-600';
+        openBtn.disabled = !/^https?:\/\//i.test(url);
+      }
+    }
+
+    // =========================================================================
+    // 6. THRESHOLD SIMULATOR
+    // =========================================================================
+    function updateSimulator() {
+      const temp = parseFloat(document.getElementById('sim-temp-slider').value);
+      const hum = parseFloat(document.getElementById('sim-hum-slider').value);
+
+      document.getElementById('sim-temp-val').textContent = `${temp.toFixed(1)} °C`;
+      document.getElementById('sim-hum-val').textContent = `${hum} %RH`;
+
+      let tempStatus = 'Suhu normal';
+      let tempClass = 'rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-900 p-3.5';
+      if (temp < 18) {
+        tempStatus = 'Suhu terlalu rendah';
+        tempClass = 'rounded-xl border border-sky-200 bg-sky-50 text-sky-900 p-3.5';
+      } else if (temp > 30) {
+        tempStatus = 'Suhu terlalu tinggi';
+        tempClass = 'rounded-xl border border-rose-200 bg-rose-50 text-rose-900 p-3.5';
+      }
+
+      let humStatus = 'Kelembapan normal';
+      let humClass = 'rounded-xl border border-emerald-200 bg-emerald-50 text-emerald-900 p-3.5';
+      if (hum < 40) {
+        humStatus = 'Kelembapan terlalu rendah';
+        humClass = 'rounded-xl border border-amber-200 bg-amber-50 text-amber-900 p-3.5';
+      } else if (hum > 60) {
+        humStatus = 'Kelembapan terlalu tinggi';
+        humClass = 'rounded-xl border border-rose-200 bg-rose-50 text-rose-900 p-3.5';
+      }
+
+      const tempCard = document.getElementById('sim-temp-card');
+      const humCard = document.getElementById('sim-hum-card');
+      tempCard.className = tempClass;
+      humCard.className = humClass;
+      document.getElementById('sim-temp-status').textContent = tempStatus;
+      document.getElementById('sim-hum-status').textContent = humStatus;
+
+      const messages = [];
+      if (temp < 18) {
+        messages.push(`PERINGATAN SUHU\nSuhu saat ini: ${temp.toFixed(1)} °C\nBatas bawah: 18 °C\nStatus: SUHU TERLALU RENDAH`);
+      } else if (temp > 30) {
+        messages.push(`PERINGATAN SUHU\nSuhu saat ini: ${temp.toFixed(1)} °C\nBatas atas: 30 °C\nStatus: SUHU TERLALU TINGGI`);
+      }
+
+      if (hum < 40) {
+        messages.push(`PERINGATAN KELEMBAPAN\nKelembapan saat ini: ${hum} %RH\nBatas bawah: 40 %RH\nStatus: KELEMBAPAN TERLALU RENDAH`);
+      } else if (hum > 60) {
+        messages.push(`PERINGATAN KELEMBAPAN\nKelembapan saat ini: ${hum} %RH\nBatas atas: 60 %RH\nStatus: KELEMBAPAN TERLALU TINGGI`);
+      }
+
+      const badge = document.getElementById('sim-overall-badge');
+      const preview = document.getElementById('sim-notif-preview');
+      if (messages.length === 0) {
+        badge.textContent = 'NORMAL';
+        badge.className = 'rounded px-2 py-0.5 text-[10px] font-bold bg-emerald-500/20 text-emerald-300';
+        preview.textContent = 'Tidak ada notifikasi peringatan. Kedua parameter berada dalam rentang standar normal.';
+      } else {
+        badge.textContent = 'ABNORMAL';
+        badge.className = 'rounded px-2 py-0.5 text-[10px] font-bold bg-rose-500/20 text-rose-300';
+        preview.textContent = messages.join('\n\n');
+      }
+    }
+
+    // =========================================================================
+    // 7. RUBRIC RENDERING, GRADE CALCULATION & CHART.JS
+    // =========================================================================
+    let rubricChart = null;
+
+    function renderRubric() {
+      const container = document.getElementById('rubric-container');
+      container.innerHTML = RUBRIC_SECTIONS.map(sec => {
+        const itemsHtml = sec.items.map(item => {
+          const isChecked = Boolean(state.checked[item.id]);
+          const checkboxClass = sec.isBonus ? 'bonus-checkbox' : 'rubric-checkbox';
+          return `
+            <label class="flex items-center justify-between gap-3 rounded-xl border border-slate-100 bg-slate-50/60 px-3.5 py-2.5 cursor-pointer transition hover:border-slate-300 hover:bg-white">
+              <div class="flex items-center gap-3">
+                <input type="checkbox" class="sr-only ${checkboxClass}" data-item-id="${item.id}" ${isChecked ? 'checked' : ''} />
+                <span class="rubric-box flex h-5 w-5 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-white transition">
+                  <svg class="h-3.5 w-3.5 text-white opacity-0 transition-transform duration-150 scale-75" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="3">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M5 13l4 4L19 7" />
+                  </svg>
+                </span>
+                <span class="text-xs sm:text-sm font-medium text-slate-800">${item.label}</span>
+              </div>
+              <span class="shrink-0 rounded-lg px-2 py-0.5 text-xs font-bold ${sec.isBonus ? 'bg-amber-100 text-amber-800' : 'bg-indigo-50 text-indigo-700'}">
+                +${item.pts} poin
+              </span>
+            </label>
+          `;
+        }).join('');
+
+        return `
+          <div class="rounded-2xl border ${sec.isBonus ? 'border-amber-200 bg-amber-50/20' : 'border-slate-200 bg-white'} p-5 sm:p-6 shadow-2xs">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <h4 class="text-sm sm:text-base font-bold text-slate-900">${sec.title}</h4>
+                <p class="mt-0.5 text-xs text-slate-500">${sec.evidence}</p>
+              </div>
+              <div class="rounded-xl border border-slate-200 bg-slate-50 px-3 py-1.5 text-xs font-bold text-slate-800">
+                <span id="sec-score-${sec.id}">0</span> / ${sec.maxPoints} poin
+              </div>
+            </div>
+            <div class="mt-4 grid gap-2 sm:grid-cols-2">
+              ${itemsHtml}
+            </div>
+          </div>
+        `;
+      }).join('');
+
+      container.querySelectorAll('input[type="checkbox"]').forEach(cb => {
+        cb.addEventListener('change', (e) => {
+          state.checked[e.target.dataset.itemId] = e.target.checked;
+          saveState();
+          recalculateScores();
+        });
+      });
+    }
+
+    function recalculateScores() {
+      let baseScore = 0;
+      let bonusScore = 0;
+      let checkedCount = 0;
+      let totalCount = 0;
+      const chartLabels = [];
+      const chartPct = [];
+
+      RUBRIC_SECTIONS.forEach(sec => {
+        let secScore = 0;
+        sec.items.forEach(item => {
+          totalCount++;
+          if (state.checked[item.id]) {
+            secScore += item.pts;
+            checkedCount++;
+          }
+        });
+        const secEl = document.getElementById(`sec-score-${sec.id}`);
+        if (secEl) secEl.textContent = secScore;
+
+        if (sec.isBonus) {
+          bonusScore += secScore;
+        } else {
+          baseScore += secScore;
+          chartLabels.push(sec.title.replace(/^8\.\d\s+/, ''));
+          chartPct.push(Math.round((secScore / sec.maxPoints) * 100));
+        }
+      });
+
+      const finalScore = Math.min(100, baseScore + bonusScore);
+
+      // Update Sidebar, Header, Mobile & Assessment Tab
+      document.getElementById('sidebar-base-score').textContent = baseScore;
+      document.getElementById('sidebar-bonus-score').textContent = `+${bonusScore}`;
+      document.getElementById('sidebar-final-score').textContent = finalScore;
+      document.getElementById('sidebar-score-bar').style.width = `${finalScore}%`;
+      document.getElementById('mobile-score-pill').textContent = `${finalScore} / 100`;
+      document.getElementById('header-checklist-count').textContent = `${checkedCount} / ${totalCount}`;
+
+      document.getElementById('eval-base-score').textContent = baseScore;
+      document.getElementById('eval-bonus-score').textContent = bonusScore;
+      document.getElementById('eval-final-score').textContent = finalScore;
+      document.getElementById('eval-items-count').textContent = `${checkedCount} / ${totalCount} item`;
+
+      // Radial Gauge
+      const circumference = 314.16;
+      const offset = circumference - (finalScore / 100) * circumference;
+      document.getElementById('radial-progress').style.strokeDashoffset = offset;
+
+      // Grade Badge
+      let badgeText = 'BELUM DINILAI';
+      let badgeClass = 'bg-slate-200 text-slate-700';
+      if (finalScore >= 85) {
+        badgeText = 'SANGAT BAIK (A)';
+        badgeClass = 'bg-emerald-100 text-emerald-800';
+      } else if (finalScore >= 75) {
+        badgeText = 'BAIK (B)';
+        badgeClass = 'bg-indigo-100 text-indigo-800';
+      } else if (finalScore >= 60) {
+        badgeText = 'CUKUP (C)';
+        badgeClass = 'bg-amber-100 text-amber-800';
+      } else if (checkedCount > 0) {
+        badgeText = 'PERLU DILENGKAPI';
+        badgeClass = 'bg-rose-100 text-rose-800';
+      }
+
+      document.getElementById('sidebar-grade-badge').textContent = badgeText;
+      document.getElementById('sidebar-grade-badge').className = `rounded-full px-2 py-0.5 text-[10px] font-bold ${badgeClass}`;
+      document.getElementById('eval-status-badge').textContent = badgeText;
+      document.getElementById('eval-status-badge').className = `rounded-full px-3 py-1 text-xs font-bold ${badgeClass}`;
+
+      updateChart(chartLabels, chartPct);
+    }
+
+    function updateChart(labels, data) {
+      const ctx = document.getElementById('rubricChart');
+      if (!ctx) return;
+      if (!rubricChart) {
+        rubricChart = new Chart(ctx, {
+          type: 'bar',
+          data: {
+            labels,
+            datasets: [{
+              label: 'Capaian (%)',
+              data,
+              backgroundColor: 'rgba(79, 70, 229, 0.85)',
+              borderRadius: 8,
+              barThickness: 22
+            }]
+          },
+          options: {
+            indexAxis: 'y',
+            responsive: true,
+            maintainAspectRatio: false,
+            scales: {
+              x: { min: 0, max: 100, ticks: { callback: v => v + '%' }, grid: { color: '#f1f5f9' } },
+              y: { grid: { display: false }, ticks: { font: { size: 11 } } }
+            },
+            plugins: {
+              legend: { display: false },
+              tooltip: { callbacks: { label: c => `Capaian: ${c.raw}%` } }
+            }
+          }
+        });
+      } else {
+        rubricChart.data.labels = labels;
+        rubricChart.data.datasets[0].data = data;
+        rubricChart.update();
+      }
+    }
+
+    // =========================================================================
+    // 8. EXPORT SELF-ASSESSMENT SUMMARY (.MD)
+    // =========================================================================
+    function exportSummaryMarkdown() {
+      let baseScore = 0;
+      let bonusScore = 0;
+      const lines = [
+        '# Ringkasan Self-Assessment UTS Praktik MQTT & Node-RED',
+        '',
+        `- **Nama:** ${state.nama || '-'}`,
+        `- **Mata Kuliah:** Komputasi Awan untuk Internet of Things`,
+        `- **Dosen Pengampu:** Rendy Almaheri Adhi Pratama, S.Kom., M.Kom.`,
+        `- **NPM:** ${state.nim || '-'}`,
+        `- **Jurusan:** ${state.kelas || '-'}`,
+        `- **Broker:** ${BROKER_CONFIG[state.broker].name} (${BROKER_CONFIG[state.broker].host})`,
+        `- **Topic Unik:** uts-iot/${sanitizeSlug(state.slug)}/`,
+        `- **Link Medium:** ${state.mediumUrl || '-'}`,
+        ''
+      ];
+
+      RUBRIC_SECTIONS.forEach(sec => {
+        let secScore = 0;
+        lines.push(`## ${sec.title}`);
+        sec.items.forEach(item => {
+          const ok = Boolean(state.checked[item.id]);
+          if (ok) secScore += item.pts;
+          lines.push(`- [${ok ? 'x' : ' '}] ${item.label} (${item.pts} poin)`);
+        });
+        lines.push(`**Subtotal:** ${secScore} / ${sec.maxPoints} poin\n`);
+        if (sec.isBonus) bonusScore += secScore;
+        else baseScore += secScore;
+      });
+
+      const finalScore = Math.min(100, baseScore + bonusScore);
+      lines.push(`---`);
+      lines.push(`- **Nilai Dasar:** ${baseScore} / 100`);
+      lines.push(`- **Poin Bonus:** +${bonusScore} / 10`);
+      lines.push(`- **Estimasi Nilai Akhir:** ${finalScore} / 100`);
+
+      const blob = new Blob([lines.join('\n')], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `Self_Assessment_UTS_${sanitizeSlug(state.slug)}.md`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+      showToast('Ringkasan evaluasi berhasil diunduh');
+    }
+
+    // =========================================================================
+    // 9. INITIALIZATION & EVENT LISTENERS
+    // =========================================================================
+    window.addEventListener('DOMContentLoaded', () => {
+      loadState();
+
+      // Bind inputs from saved state
+      document.getElementById('student-slug-input').value = state.slug;
+      document.getElementById('med-nama').value = state.nama;
+      document.getElementById('med-nim').value = state.nim;
+      document.getElementById('med-kelas').value = state.kelas;
+      document.getElementById('med-url').value = state.mediumUrl;
+
+      // Tab navigation
+      document.querySelectorAll('.nav-pill, [data-jump-tab]').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const tab = btn.dataset.tab || btn.dataset.jumpTab;
+          if (tab) switchTab(tab);
+        });
+      });
+
+      // Mobile drawer
+      document.getElementById('mobile-menu-btn').addEventListener('click', openMobileSidebar);
+      document.getElementById('close-sidebar-btn').addEventListener('click', closeMobileSidebar);
+      document.getElementById('mobile-overlay').addEventListener('click', closeMobileSidebar);
+
+      // Broker buttons
+      document.querySelectorAll('.broker-btn').forEach(btn => {
+        btn.addEventListener('click', () => {
+          state.broker = btn.dataset.broker;
+          saveState();
+          updateBrokerUI();
+        });
+      });
+
+      // Topic input
+      document.getElementById('student-slug-input').addEventListener('input', (e) => {
+        state.slug = e.target.value;
+        saveState();
+        updateTopicUI();
+      });
+
+      // Flow node click
+      document.querySelectorAll('.flow-node').forEach(btn => {
+        btn.addEventListener('click', () => {
+          const key = btn.dataset.node;
+          if (NODE_DETAILS[key]) {
+            document.getElementById('flow-node-detail').innerHTML = NODE_DETAILS[key];
+          }
+        });
+      });
+
+      // Simulator sliders
+      document.getElementById('sim-temp-slider').addEventListener('input', updateSimulator);
+      document.getElementById('sim-hum-slider').addEventListener('input', updateSimulator);
+
+      // Medium identity & URL inputs
+      ['med-nama', 'med-nim', 'med-kelas', 'med-url'].forEach(id => {
+        document.getElementById(id).addEventListener('input', (e) => {
+          if (id === 'med-nama') state.nama = e.target.value;
+          if (id === 'med-nim') state.nim = e.target.value;
+          if (id === 'med-kelas') state.kelas = e.target.value;
+          if (id === 'med-url') state.mediumUrl = e.target.value;
+          saveState();
+          updateMediumTemplate();
+          updateMediumUrlStatus();
+        });
+      });
+
+      document.getElementById('open-medium-btn').addEventListener('click', () => {
+        const url = state.mediumUrl.trim();
+        if (url) window.open(url, '_blank', 'noopener,noreferrer');
+      });
+
+      // Rubric quick actions
+      document.getElementById('check-all-base-btn').addEventListener('click', () => {
+        RUBRIC_SECTIONS.filter(s => !s.isBonus).forEach(sec => {
+          sec.items.forEach(item => { state.checked[item.id] = true; });
+        });
+        saveState();
+        renderRubric();
+        recalculateScores();
+        showToast('Seluruh poin dasar ditandai terpenuhi');
+      });
+
+      document.getElementById('reset-rubric-btn').addEventListener('click', () => {
+        state.checked = {};
+        saveState();
+        renderRubric();
+        recalculateScores();
+        showToast('Checklist rubrik direset');
+      });
+
+      document.getElementById('export-summary-btn').addEventListener('click', exportSummaryMarkdown);
+
+      // Initial renders
+      updateBrokerUI();
+      updateTopicUI();
+      updateMediumUrlStatus();
+      updateSimulator();
+      renderRubric();
+      recalculateScores();
+      switchTab(state.activeTab || 'overview');
+    });
+  </script>
+</body>
+</html>
